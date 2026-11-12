@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>开门</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:#0e1012;color:#e8eaed;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;min-height:100vh}
+header{padding:20px 20px 0;display:flex;justify-content:space-between;align-items:center}
+h1{font-size:17px;font-weight:600;margin:0}
+.gear{background:none;border:0;color:#9aa3ab;font-size:13px;padding:6px 2px}
+main{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 20px 24px}
+.door{font-size:15px;color:#c7ccd1;margin-bottom:6px}
+.sub{font-size:13px;color:#7d858d;margin-bottom:36px}
+.openbtn{width:200px;height:200px;border-radius:50%;border:1px solid #2c3136;background:#17191c;color:#fff;font-size:26px;font-weight:600;letter-spacing:4px}
+.openbtn:active{background:#1f2327}
+.openbtn[disabled]{opacity:.55}
+.status{margin-top:28px;font-size:14px;color:#9aa3ab;min-height:20px;text-align:center}
+.status.ok{color:#7fc97f}
+.status.err{color:#e08a8a}
+.panel{width:100%;max-width:520px;margin:0 auto;padding:8px 20px 32px}
+.panel h2{font-size:15px;margin:18px 0 8px}
+.panel p{font-size:13px;color:#9aa3ab;line-height:1.6;margin:6px 0}
+textarea{width:100%;height:110px;background:#141619;border:1px solid #2a2e33;border-radius:10px;color:#e8eaed;padding:10px;font-size:12px}
+.savebtn{width:100%;margin-top:16px;padding:13px;border:0;border-radius:10px;background:#e8eaed;color:#111;font-size:15px;font-weight:600}
+.linkbtn{background:none;border:0;color:#7d858d;font-size:13px;margin-top:14px;padding:6px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div id="view-main">
+<header><h1>开门</h1><button class="gear" id="btn-settings">设置</button></header>
+<main>
+<div class="door">9栋1单元</div>
+<div class="sub">泰跃金河</div>
+<button class="openbtn" id="btn-open">开门</button>
+<div class="status" id="status"></div>
+</main>
+</div>
+<div id="view-config" class="hidden">
+<header><h1>配置</h1><button class="gear" id="btn-back">返回</button></header>
+<div class="panel">
+<h2>登录响应</h2>
+<p>在 Stream 打开 login/sms 请求，复制它的响应内容，粘贴到这里。</p>
+<textarea id="ta-login" placeholder="粘贴登录响应 JSON"></textarea>
+<h2>开门请求体</h2>
+<p>在 Stream 打开开门请求，复制它的请求体（查看 JSON），粘贴到这里。</p>
+<textarea id="ta-open" placeholder="粘贴开门请求体 JSON"></textarea>
+<button class="savebtn" id="btn-save">保存配置</button>
+<button class="linkbtn" id="btn-clear">清除已保存的配置</button>
+<p>配置只保存在这台手机的浏览器里，不经过任何服务器。</p>
+</div>
+</div>
+<script>
+function md5(input) {
+  function safeAdd(x, y) {
+    const lsw = (x & 0xffff) + (y & 0xffff)
+    const msw = (x >>> 16) + (y >>> 16) + (lsw >>> 16)
+    return (msw << 16) | (lsw & 0xffff)
+  }
+  function rol(num, cnt) { return (num << cnt) | (num >>> (32 - cnt)) }
+  function cmn(q, a, b, x, s, t) {
+    return safeAdd(rol(safeAdd(safeAdd(a, q), safeAdd(x, t)), s), b)
+  }
+  function ff(a,b,c,d,x,s,t) { return cmn((b & c) | ((~b) & d),a,b,x,s,t) }
+  function gg(a,b,c,d,x,s,t) { return cmn((b & d) | (c & (~d)),a,b,x,s,t) }
+  function hh(a,b,c,d,x,s,t) { return cmn(b ^ c ^ d,a,b,x,s,t) }
+  function ii(a,b,c,d,x,s,t) { return cmn(c ^ (b | (~d)),a,b,x,s,t) }
+  function utf8(s) { return unescape(encodeURIComponent(s)) }
+  function hex(n) {
+    let out = ""
+    for (let j = 0; j < 4; j++) out += ((n >>> (j * 8)) & 0xff).toString(16).padStart(2, "0")
+    return out
+  }
+
+  const str = utf8(input)
+  const x = []
+  for (let i = 0; i < str.length; i++) x[i >> 2] = (x[i >> 2] || 0) | (str.charCodeAt(i) << ((i % 4) * 8))
+  x[str.length >> 2] = (x[str.length >> 2] || 0) | (0x80 << ((str.length % 4) * 8))
+  x[(((str.length + 8) >>> 6) << 4) + 14] = str.length * 8
+
+  let a = 0x67452301, b = 0xefcdab89, c = 0x98badcfe, d = 0x10325476
+  for (let k = 0; k < x.length; k += 16) {
+    const oa = a, ob = b, oc = c, od = d
+    a=ff(a,b,c,d,x[k+0]||0,7,-680876936); d=ff(d,a,b,c,x[k+1]||0,12,-389564586); c=ff(c,d,a,b,x[k+2]||0,17,606105819); b=ff(b,c,d,a,x[k+3]||0,22,-1044525330)
+    a=ff(a,b,c,d,x[k+4]||0,7,-176418897); d=ff(d,a,b,c,x[k+5]||0,12,1200080426); c=ff(c,d,a,b,x[k+6]||0,17,-1473231341); b=ff(b,c,d,a,x[k+7]||0,22,-45705983)
+    a=ff(a,b,c,d,x[k+8]||0,7,1770035416); d=ff(d,a,b,c,x[k+9]||0,12,-1958414417); c=ff(c,d,a,b,x[k+10]||0,17,-42063); b=ff(b,c,d,a,x[k+11]||0,22,-1990404162)
+    a=ff(a,b,c,d,x[k+12]||0,7,1804603682); d=ff(d,a,b,c,x[k+13]||0,12,-40341101); c=ff(c,d,a,b,x[k+14]||0,17,-1502002290); b=ff(b,c,d,a,x[k+15]||0,22,1236535329)
+    a=gg(a,b,c,d,x[k+1]||0,5,-165796510); d=gg(d,a,b,c,x[k+6]||0,9,-1069501632); c=gg(c,d,a,b,x[k+11]||0,14,643717713); b=gg(b,c,d,a,x[k+0]||0,20,-373897302)
+    a=gg(a,b,c,d,x[k+5]||0,5,-701558691); d=gg(d,a,b,c,x[k+10]||0,9,38016083); c=gg(c,d,a,b,x[k+15]||0,14,-660478335); b=gg(b,c,d,a,x[k+4]||0,20,-405537848)
+    a=gg(a,b,c,d,x[k+9]||0,5,568446438); d=gg(d,a,b,c,x[k+14]||0,9,-1019803690); c=gg(c,d,a,b,x[k+3]||0,14,-187363961); b=gg(b,c,d,a,x[k+8]||0,20,1163531501)
+    a=gg(a,b,c,d,x[k+13]||0,5,-1444681467); d=gg(d,a,b,c,x[k+2]||0,9,-51403784); c=gg(c,d,a,b,x[k+7]||0,14,1735328473); b=gg(b,c,d,a,x[k+12]||0,20,-1926607734)
+    a=hh(a,b,c,d,x[k+5]||0,4,-378558); d=hh(d,a,b,c,x[k+8]||0,11,-2022574463); c=hh(c,d,a,b,x[k+11]||0,16,1839030562); b=hh(b,c,d,a,x[k+14]||0,23,-35309556)
+    a=hh(a,b,c,d,x[k+1]||0,4,-1530992060); d=hh(d,a,b,c,x[k+4]||0,11,1272893353); c=hh(c,d,a,b,x[k+7]||0,16,-155497632); b=hh(b,c,d,a,x[k+10]||0,23,-1094730640)
+    a=hh(a,b,c,d,x[k+13]||0,4,681279174); d=hh(d,a,b,c,x[k+0]||0,11,-358537222); c=hh(c,d,a,b,x[k+3]||0,16,-722521979); b=hh(b,c,d,a,x[k+6]||0,23,76029189)
+    a=hh(a,b,c,d,x[k+9]||0,4,-640364487); d=hh(d,a,b,c,x[k+12]||0,11,-421815835); c=hh(c,d,a,b,x[k+15]||0,16,530742520); b=hh(b,c,d,a,x[k+2]||0,23,-995338651)
+    a=ii(a,b,c,d,x[k+0]||0,6,-198630844); d=ii(d,a,b,c,x[k+7]||0,10,1126891415); c=ii(c,d,a,b,x[k+14]||0,15,-1416354905); b=ii(b,c,d,a,x[k+5]||0,21,-57434055)
+    a=ii(a,b,c,d,x[k+12]||0,6,1700485571); d=ii(d,a,b,c,x[k+3]||0,10,-1894986606); c=ii(c,d,a,b,x[k+10]||0,15,-1051523); b=ii(b,c,d,a,x[k+1]||0,21,-2054922799)
+    a=ii(a,b,c,d,x[k+8]||0,6,1873313359); d=ii(d,a,b,c,x[k+15]||0,10,-30611744); c=ii(c,d,a,b,x[k+6]||0,15,-1560198380); b=ii(b,c,d,a,x[k+13]||0,21,1309151649)
+    a=ii(a,b,c,d,x[k+4]||0,6,-145523070); d=ii(d,a,b,c,x[k+11]||0,10,-1120210379); c=ii(c,d,a,b,x[k+2]||0,15,718787259); b=ii(b,c,d,a,x[k+9]||0,21,-343485551)
+    a=safeAdd(a,oa); b=safeAdd(b,ob); c=safeAdd(c,oc); d=safeAdd(d,od)
+  }
+  return hex(a)+hex(b)+hex(c)+hex(d)
+}
+var UA = "LZMH/4.11.1 (iPhone; iOS 27.3; Scale/3.00)";
+var PATHS = ["/api/v1/opendoor/openDoorControlV2", "/lzmh_app_api/api/v1/opendoor/openDoorControlV2"];
+var KEY = "opendoor.cfg.v1";
+function $(id){ return document.getElementById(id) }
+function deepFind(obj, name){
+  if(!obj || typeof obj !== "object") return undefined;
+  if(Object.prototype.hasOwnProperty.call(obj, name) && typeof obj[name] === "string" && obj[name]) return obj[name];
+  var ks = Object.keys(obj);
+  for(var i = 0; i < ks.length; i++){ var v = deepFind(obj[ks[i]], name); if(v !== undefined) return v }
+  return undefined;
+}
+function loadCfg(){ try{ var s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null }catch(e){ return null } }
+function show(view){
+  $("view-main").classList.toggle("hidden", view !== "main");
+  $("view-config").classList.toggle("hidden", view !== "config");
+}
+function setStatus(text, cls){
+  var el = $("status");
+  el.textContent = text;
+  el.className = "status" + (cls ? " " + cls : "");
+}
+function saveCfg(){
+  var loginText = $("ta-login").value.trim(), openText = $("ta-open").value.trim();
+  if(!loginText || !openText){ alert("两段都要粘贴"); return }
+  var login, openBody;
+  try{ login = JSON.parse(loginText) }catch(e){ alert("登录响应不是有效的 JSON"); return }
+  try{ openBody = JSON.parse(openText) }catch(e){ alert("开门请求体不是有效的 JSON"); return }
+  var token = deepFind(login, "token"), openid = deepFind(login, "openid");
+  var ser = (openBody.body && openBody.body.ser_num) || deepFind(openBody, "ser_num");
+  var header = openBody.header || null;
+  if(!token || !openid){ alert("登录响应里没找到 token / openid"); return }
+  if(!ser || !header){ alert("开门请求体里没找到 ser_num / header"); return }
+  localStorage.setItem(KEY, JSON.stringify({ token: token, openid: openid, ser_num: ser, header: header }));
+  $("ta-login").value = ""; $("ta-open").value = "";
+  setStatus("配置已保存", "");
+  show("main");
+}
+function openDoor(){
+  var cfg = loadCfg();
+  if(!cfg){ show("config"); return }
+  var btn = $("btn-open");
+  btn.disabled = true;
+  setStatus("正在发送", "");
+  var ts = Math.floor(Date.now() / 1000).toString();
+  var url = "https://lzmh.lz-qs.com:6025/lzmh_app_api/api/v1/opendoor/openDoorControlV2";
+  var bodyText = JSON.stringify({ header: cfg.header, body: { ser_num: cfg.ser_num, msg_id: ts } });
+  var sent = 0, failed = 0;
+  function finish(){
+    if(sent + failed < PATHS.length) return;
+    btn.disabled = false;
+    if(sent > 0){ setStatus("已发送，请看门是否打开", "ok") }
+    else{ setStatus("发送失败，请检查网络后重试", "err") }
+  }
+  PATHS.forEach(function(p, i){
+    setTimeout(function(){
+      var sign = md5(p + ts + cfg.token);
+      var full = url + "?timestamp=" + ts + "&openid=" + encodeURIComponent(cfg.openid) + "&sign=" + sign;
+      fetch(full, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain" }, body: bodyText })
+        .then(function(){ sent++; finish() })
+        .catch(function(){ failed++; finish() });
+    }, i * 500);
+  });
+}
+$("btn-open").addEventListener("click", openDoor);
+$("btn-settings").addEventListener("click", function(){ show("config") });
+$("btn-back").addEventListener("click", function(){ show("main") });
+$("btn-save").addEventListener("click", saveCfg);
+$("btn-clear").addEventListener("click", function(){
+  if(confirm("清除本机保存的配置？")){ localStorage.removeItem(KEY); setStatus("配置已清除", ""); show("config") }
+});
+if(!loadCfg()){ show("config") } else { show("main") }
+</script>
+</body>
+</html>
