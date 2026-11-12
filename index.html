@@ -10,10 +10,12 @@
 :root{color-scheme:dark}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:#0e1012;color:#e8eaed;font-family:-apple-system,"PingFang SC",sans-serif;min-height:100vh}
-#view-main{min-height:100vh;display:flex;align-items:center;justify-content:center}
+.center{min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:24px}
 #btn-open{width:210px;height:210px;border-radius:50%;border:1px solid #2c3136;background:#17191c;color:#fff;font-size:27px;font-weight:600;letter-spacing:6px;user-select:none;-webkit-user-select:none;touch-action:manipulation}
 #btn-open:active{background:#1f2327}
 #btn-open[disabled]{opacity:.55}
+#in-key{width:230px;padding:13px;border:1px solid #2a2e33;border-radius:10px;background:#141619;color:#e8eaed;font-size:16px;text-align:center}
+#btn-activate{margin-top:16px;width:230px;padding:13px;border:0;border-radius:10px;background:#e8eaed;color:#111;font-size:15px;font-weight:600}
 .panel{width:100%;max-width:520px;margin:0 auto;padding:24px 20px 40px}
 .panel p{font-size:13px;color:#9aa3ab;line-height:1.6;margin:14px 0 6px}
 textarea{width:100%;height:110px;background:#141619;border:1px solid #2a2e33;border-radius:10px;color:#e8eaed;padding:10px;font-size:12px}
@@ -23,7 +25,11 @@ textarea{width:100%;height:110px;background:#141619;border:1px solid #2a2e33;bor
 </style>
 </head>
 <body>
-<div id="view-main">
+<div id="view-key" class="center hidden">
+<input id="in-key" type="text" placeholder="输入卡密" autocomplete="off">
+<button id="btn-activate">激活</button>
+</div>
+<div id="view-main" class="center hidden">
 <button id="btn-open">开门</button>
 </div>
 <div id="view-config" class="hidden">
@@ -87,8 +93,64 @@ function md5(input) {
   }
   return hex(a)+hex(b)+hex(c)+hex(d)
 }
+function sha256(ascii) {
+  function rr(v, a) { return (v >>> a) | (v << (32 - a)) }
+  var maxWord = Math.pow(2, 32), result = "";
+  var words = [], asciiBitLength = ascii.length * 8;
+  var hash = sha256.h = sha256.h || [], k = sha256.k = sha256.k || [];
+  var primeCounter = k.length, isComposite = {};
+  for (var candidate = 2; primeCounter < 64; candidate++) {
+    if (!isComposite[candidate]) {
+      for (var i = 0; i < 313; i += candidate) isComposite[i] = candidate;
+      hash[primeCounter] = (Math.pow(candidate, 0.5) * maxWord) | 0;
+      k[primeCounter++] = (Math.pow(candidate, 1 / 3) * maxWord) | 0;
+    }
+  }
+  ascii += "\x80";
+  while ((ascii.length % 64) - 56) ascii += "\x00";
+  for (var i = 0; i < ascii.length; i++) {
+    var j = ascii.charCodeAt(i);
+    if (j >> 8) return sha256(unescape(encodeURIComponent(ascii)));
+    words[i >> 2] |= j << (((3 - i) % 4) * 8);
+  }
+  words[words.length] = ((asciiBitLength / maxWord) | 0);
+  words[words.length] = asciiBitLength;
+  for (var j = 0; j < words.length;) {
+    var w = words.slice(j, j += 16), oldHash = hash;
+    hash = hash.slice(0, 8);
+    for (var i = 0; i < 64; i++) {
+      var w15 = w[i - 15], w2 = w[i - 2];
+      var a = hash[0], e = hash[4];
+      var temp1 = hash[7]
+        + (rr(e, 6) ^ rr(e, 11) ^ rr(e, 25))
+        + ((e & hash[5]) ^ ((~e) & hash[6]))
+        + k[i]
+        + (w[i] = (i < 16) ? w[i] : (
+            w[i - 16]
+            + (rr(w15, 7) ^ rr(w15, 18) ^ (w15 >>> 3))
+            + w[i - 7]
+            + (rr(w2, 17) ^ rr(w2, 19) ^ (w2 >>> 10))
+          ) | 0);
+      var temp2 = (rr(a, 2) ^ rr(a, 13) ^ rr(a, 22))
+        + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+      hash = [(temp1 + temp2) | 0].concat(hash);
+      hash[4] = (hash[4] + temp1) | 0;
+    }
+    for (var i = 0; i < 8; i++) hash[i] = (hash[i] + oldHash[i]) | 0;
+  }
+  for (var i = 0; i < 8; i++) {
+    for (var j = 3; j + 1; j--) {
+      var b = (hash[i] >> (j * 8)) & 255;
+      result += ((b < 16) ? "0" : "") + b.toString(16);
+    }
+  }
+  return result;
+}
+
+var KEY_HASH = "54a61b904dcaa55683785c488bd372b0d0ced7ddb501202aba55b1cce5a121e0";
 var PATHS = ["/api/v1/opendoor/openDoorControlV2", "/lzmh_app_api/api/v1/opendoor/openDoorControlV2"];
 var KEY = "opendoor.cfg.v1";
+var AKEY = "opendoor.activated.v1";
 function $(id){ return document.getElementById(id) }
 function deepFind(obj, name){
   if(!obj || typeof obj !== "object") return undefined;
@@ -98,9 +160,23 @@ function deepFind(obj, name){
   return undefined;
 }
 function loadCfg(){ try{ var s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null }catch(e){ return null } }
+function isActivated(){ try{ return localStorage.getItem(AKEY) === KEY_HASH }catch(e){ return false } }
 function show(view){
+  $("view-key").classList.toggle("hidden", view !== "key");
   $("view-main").classList.toggle("hidden", view !== "main");
   $("view-config").classList.toggle("hidden", view !== "config");
+}
+function home(){ if(!isActivated()){ show("key") } else if(!loadCfg()){ show("config") } else { show("main") } }
+function activate(){
+  var v = $("in-key").value.trim();
+  if(!v) return;
+  if(sha256("opendoor-v1:" + v) === KEY_HASH){
+    localStorage.setItem(AKEY, KEY_HASH);
+    $("in-key").value = "";
+    home();
+  } else {
+    alert("卡密不正确");
+  }
 }
 function saveCfg(){
   var loginText = $("ta-login").value.trim(), openText = $("ta-open").value.trim();
@@ -150,11 +226,12 @@ btnOpen.addEventListener("touchstart", function(){
 }, { passive: true });
 btnOpen.addEventListener("touchend", function(){ if(pressTimer) clearTimeout(pressTimer) });
 btnOpen.addEventListener("click", function(){ if(!longPressed) openDoor() });
+$("btn-activate").addEventListener("click", activate);
 $("btn-save").addEventListener("click", saveCfg);
 $("btn-clear").addEventListener("click", function(){
   if(confirm("清除本机保存的配置？")){ localStorage.removeItem(KEY); show("config") }
 });
-if(!loadCfg()){ show("config") } else { show("main") }
+home();
 </script>
 </body>
 </html>
